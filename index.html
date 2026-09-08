@@ -174,26 +174,51 @@
   .off-tag{font-size:10.5px;font-weight:800;color:#fff;background:var(--off-text);
     border:none;padding:2px 8px;border-radius:20px;letter-spacing:.02em}
 
-  .res-list{display:flex;flex-direction:column;gap:4px;overflow:visible}
-  .chip{display:flex;align-items:flex-start;gap:5px;background:var(--accent-soft);
-    border:1px solid color-mix(in srgb,var(--accent) 30%,transparent);border-radius:7px;
-    padding:4px 6px;font-size:11px;line-height:1.35;position:relative}
-  .chip .time{font-family:var(--mono);font-weight:600;color:var(--accent-ink);white-space:nowrap;font-size:10.5px}
-  .chip .info{color:var(--text);min-width:0}
-  .chip .pc{font-family:var(--mono);font-weight:600}
-  .chip .x{margin-left:auto;flex:none;border:none;background:transparent;color:var(--text-faint);
-    cursor:pointer;font-size:13px;line-height:1;padding:0 2px;border-radius:4px}
-  .chip .x:hover{color:var(--danger);background:var(--danger-soft)}
+  /* 셀 안: 작은 'n조' 줄만 */
+  .cell{cursor:pointer}
+  .cell.blank{cursor:default}
+  .res-list{display:flex;flex-direction:column;gap:3px;overflow:hidden;pointer-events:none}
+  .day-line{font-size:11px;font-weight:700;color:var(--accent-ink);background:var(--accent-soft);
+    border:1px solid color-mix(in srgb,var(--accent) 22%,transparent);border-radius:5px;
+    padding:1px 6px;line-height:1.55;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+  .day-more{font-size:10.5px;font-weight:700;color:var(--text-faint);padding:0 4px}
+
+  .cell-hint{margin-top:auto;font-size:10.5px;font-weight:700;text-align:center;
+    border-top:1px dashed var(--border);padding-top:5px;color:var(--good)}
+  .cell.disabled .cell-hint{color:var(--off-text);border-top-color:var(--off-line)}
 
   .cell-actions{margin-top:auto;display:flex;gap:6px}
-  .add-btn{width:100%;border:1px dashed color-mix(in srgb,var(--good) 45%,transparent);
-    background:color-mix(in srgb,var(--good) 8%,transparent);color:var(--good);
-    padding:5px;border-radius:7px;font-size:11.5px;font-weight:700;cursor:pointer}
-  .add-btn:hover{border-color:var(--good);color:var(--good);background:var(--good-soft)}
   .toggle-btn{width:100%;font-size:11px;padding:5px;border-radius:7px;font-weight:700;cursor:pointer;
     border:1px solid var(--border-strong);background:var(--surface)}
   .toggle-btn.on{color:var(--danger);border-color:color-mix(in srgb,var(--danger) 45%,transparent)}
   .toggle-btn.off{color:var(--good);border-color:color-mix(in srgb,var(--good) 45%,transparent)}
+
+  /* 날짜 상세: 예약 기록 목록 */
+  .dlist{display:flex;flex-direction:column;gap:8px;max-height:52vh;overflow-y:auto}
+  .drow{display:flex;align-items:center;gap:10px;padding:10px 12px;border:1px solid var(--border);
+    border-radius:10px;background:var(--surface-2)}
+  .drow .dtime{font-family:var(--mono);font-weight:600;color:var(--accent-ink);font-size:12.5px;white-space:nowrap}
+  .drow .dmain{flex:1;min-width:0;font-size:13px;line-height:1.35}
+  .drow .dmain .dpc{font-family:var(--mono);font-weight:700}
+  .drow .dsub{color:var(--text-soft);font-size:12px}
+  .drow .ddel{flex:none;border:1px solid var(--border-strong);background:var(--surface);color:var(--text-soft);
+    border-radius:7px;padding:5px 10px;font-size:12px;font-weight:700;cursor:pointer}
+  .drow .ddel:hover{border-color:var(--danger);color:var(--danger);background:var(--danger-soft)}
+  .dempty{padding:24px;text-align:center;color:var(--text-faint);font-size:13px}
+  .dnote{font-size:12.5px;color:var(--off-text);background:var(--off-fill);border:1px solid var(--off-line);
+    border-radius:8px;padding:9px 12px;font-weight:600;text-align:center}
+
+  /* 로그 목록 */
+  .loglist{display:flex;flex-direction:column;gap:6px;max-height:58vh;overflow-y:auto}
+  .logrow{display:flex;align-items:center;gap:9px;padding:8px 10px;border:1px solid var(--border);
+    border-radius:9px;background:var(--surface-2);font-size:12.5px;line-height:1.4}
+  .logtime{font-family:var(--mono);font-size:11px;color:var(--text-faint);white-space:nowrap;flex:none}
+  .logbadge{flex:none;font-size:10.5px;font-weight:800;padding:2px 8px;border-radius:20px}
+  .logbadge.add{color:var(--good);background:var(--good-soft)}
+  .logbadge.del{color:var(--danger);background:var(--danger-soft)}
+  .logmain{flex:1;min-width:0}
+  .logwho{color:var(--text-soft);font-size:11.5px}
+  .logempty{padding:24px;text-align:center;color:var(--text-faint);font-size:13px}
 
   /* ===== Modal ===== */
   .overlay{position:fixed;inset:0;background:rgba(12,16,26,.5);backdrop-filter:blur(3px);
@@ -323,6 +348,7 @@ function makeFirebaseStore(){
   const fdb = firebase.firestore();
   const resCol = fdb.collection("reservations");
   const metaDoc = fdb.collection("meta").doc("disabledDates");
+  const logCol = fdb.collection("logs");
   return {
     mode:"firebase",
     onReservations(cb){
@@ -344,12 +370,17 @@ function makeFirebaseStore(){
     },
     async addReservation(data){ const ref=await resCol.add(data); return ref.id; },
     async deleteReservation(id){ await resCol.doc(id).delete(); },
-    async setDateDisabled(date,disabled){ await metaDoc.set({dates:{[date]:disabled}},{merge:true}); }
+    async setDateDisabled(date,disabled){ await metaDoc.set({dates:{[date]:disabled}},{merge:true}); },
+    async addLog(entry){ try{ await logCol.add(entry); }catch(e){ console.warn("로그 저장 실패:",e.code||e.message); } },
+    async getLogs(n=200){
+      const q=await logCol.orderBy("ts","desc").limit(n).get();
+      const a=[]; q.forEach(d=>a.push(d.data())); return a;
+    }
   };
 }
 
 function makeLocalStore(){
-  const RES="cs_res_v1", DIS="cs_dis_v1";
+  const RES="cs_res_v1", DIS="cs_dis_v1", LOG="cs_logs_v1";
   const read=(k)=>{try{return JSON.parse(localStorage.getItem(k)||"null")}catch(e){return null}};
   const write=(k,v)=>{try{localStorage.setItem(k,JSON.stringify(v))}catch(e){}};
   let resCb=null, disCb=null;
@@ -369,7 +400,9 @@ function makeLocalStore(){
       arr.push({id,...data}); write(RES,arr); emitRes(); return id;
     },
     async deleteReservation(id){ write(RES,(read(RES)||[]).filter(r=>r.id!==id)); emitRes(); },
-    async setDateDisabled(date,disabled){ const m=read(DIS)||{}; m[date]=disabled; write(DIS,m); emitDis(); }
+    async setDateDisabled(date,disabled){ const m=read(DIS)||{}; m[date]=disabled; write(DIS,m); emitDis(); },
+    async addLog(entry){ const a=read(LOG)||[]; a.unshift(entry); if(a.length>500)a.length=500; write(LOG,a); },
+    async getLogs(n=200){ return (read(LOG)||[]).slice(0,n); }
   };
 }
 
@@ -419,6 +452,7 @@ function render(){
     const isOff=disabled.has(ds);
     const cell=document.createElement("div");
     cell.className="cell"+(dow===0?" sun":"")+(dow===6?" sat":"")+(isOff?" disabled":"");
+    cell.onclick=()=>openDay(ds);   // 날짜 클릭 → 예약 기록 보기
 
     const head=document.createElement("div"); head.className="cell-head";
     const num=document.createElement("span"); num.className="daynum"; num.textContent=d;
@@ -427,54 +461,179 @@ function render(){
     else if(isOff){const o=document.createElement("span");o.className="off-tag";o.textContent="비활성";head.appendChild(o);}
     cell.appendChild(head);
 
-    // reservations
+    // 작은 'n조' 줄만 표시 (최대 5줄, 이후 +N)
+    const dayRes=reservations.filter(r=>r.date===ds)
+      .sort((a,b)=>a.startMin-b.startMin || a.computer-b.computer);
     const list=document.createElement("div"); list.className="res-list";
-    reservations.filter(r=>r.date===ds)
-      .sort((a,b)=>a.startMin-b.startMin || a.computer-b.computer)
-      .forEach(r=>list.appendChild(makeChip(r)));
+    const CAP=5;
+    dayRes.slice(0,CAP).forEach(r=>{
+      const line=document.createElement("div"); line.className="day-line";
+      line.textContent=`${r.section}반 ${r.group}조`;
+      list.appendChild(line);
+    });
+    if(dayRes.length>CAP){
+      const more=document.createElement("div"); more.className="day-more";
+      more.textContent=`+${dayRes.length-CAP}건 더`;
+      list.appendChild(more);
+    }
     cell.appendChild(list);
 
-    // actions
-    const actions=document.createElement("div"); actions.className="cell-actions";
+    // 하단: 관리자는 활성/비활성 토글, 일반 사용자는 안내 힌트
     if(isAdmin){
+      const actions=document.createElement("div"); actions.className="cell-actions";
       const t=document.createElement("button");
       t.className="toggle-btn "+(isOff?"off":"on");
       t.textContent=isOff?"↺ 활성화":"⊘ 비활성화";
-      t.onclick=()=>store.setDateDisabled(ds,!isOff)
-        .catch(e=>toast("변경 실패: "+(e.code||e.message),"warn"));
+      t.onclick=(e)=>{ e.stopPropagation();
+        store.setDateDisabled(ds,!isOff).catch(err=>toast("변경 실패: "+(err.code||err.message),"warn"));
+      };
       actions.appendChild(t);
-    } else if(!isOff){
-      const a=document.createElement("button");
-      a.className="add-btn"; a.textContent="+ 예약 추가";
-      a.onclick=()=>openForm(ds);
-      actions.appendChild(a);
+      cell.appendChild(actions);
+    } else {
+      const hint=document.createElement("div"); hint.className="cell-hint";
+      hint.textContent = isOff ? "기록 보기" : (dayRes.length? "예약 보기 · 추가" : "+ 예약 추가");
+      cell.appendChild(hint);
     }
-    cell.appendChild(actions);
     grid.appendChild(cell);
   }
-}
-
-function makeChip(r){
-  const c=document.createElement("div"); c.className="chip";
-  const t=document.createElement("span"); t.className="time";
-  t.textContent=`${fmtTime(r.startMin)}–${fmtTime(r.endMin)}`;
-  const info=document.createElement("span"); info.className="info";
-  info.innerHTML=`<span class="pc">컴${r.computer}</span> · ${r.section}반 ${r.group}조 · ${escapeHtml(r.leader)}`;
-  c.appendChild(t); c.appendChild(info);
-  if(isAdmin || myIds.has(r.id)){
-    const x=document.createElement("button"); x.className="x"; x.textContent="×"; x.title="삭제";
-    x.onclick=(e)=>{ e.stopPropagation();
-      if(confirm(`예약 삭제:\n${fmtTime(r.startMin)}–${fmtTime(r.endMin)} 컴퓨터${r.computer} (${r.section}반 ${r.group}조)\n삭제할까요?`)){
-        store.deleteReservation(r.id).then(()=>{myIds.delete(r.id);saveMyIds();toast("삭제되었습니다.","ok");})
-          .catch(err=>toast("삭제 실패: "+(err.code||err.message),"warn"));
-      }
-    };
-    c.appendChild(x);
-  }
-  return c;
+  refreshDay();   // 열려 있는 상세 모달을 최신 데이터로 갱신
 }
 
 function escapeHtml(s){return String(s||"").replace(/[&<>"']/g,m=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[m]))}
+
+/* 추가/삭제 로그 기록 (best-effort) */
+function logEvent(action,r,who){
+  if(!store.addLog) return;
+  store.addLog({
+    ts:Date.now(), action, who:who||"",
+    date:r.date, startMin:r.startMin, endMin:r.endMin,
+    section:r.section, group:r.group, computer:r.computer, leader:r.leader
+  });
+}
+
+/* ============================================================
+   날짜 상세 모달 : 예약 기록 목록 + 삭제(조장 이름 확인) + 추가
+   ============================================================ */
+let dayOverlay=null, dayDate=null;
+
+function openDay(ds){
+  closeDay();
+  dayDate=ds;
+  const [Y,M,D]=ds.split("-");
+  const dow=WEEKDAYS[new Date(+Y,+M-1,+D).getDay()];
+  const overlay=document.createElement("div"); overlay.className="overlay";
+  overlay.innerHTML=`
+    <div class="modal" role="dialog" aria-modal="true" aria-label="날짜별 예약 기록">
+      <div class="modal-head">
+        <div>
+          <h2>${+M}월 ${+D}일 (${dow}) 예약 기록</h2>
+          <div class="sub" id="daySub"></div>
+        </div>
+        <button class="close-x" data-close aria-label="닫기">×</button>
+      </div>
+      <div class="modal-body"><div id="dayBody"></div></div>
+      <div class="modal-foot" id="dayFoot"></div>
+    </div>`;
+  document.body.appendChild(overlay);
+  dayOverlay=overlay;
+  overlay.querySelectorAll("[data-close]").forEach(b=>b.onclick=closeDay);
+  overlay.onclick=(e)=>{ if(e.target===overlay) closeDay(); };
+  refreshDay();
+}
+
+function closeDay(){ if(dayOverlay){ dayOverlay.remove(); dayOverlay=null; dayDate=null; } }
+
+function refreshDay(){
+  if(!dayOverlay||!dayDate) return;
+  const ds=dayDate, isOff=disabled.has(ds);
+  const body=dayOverlay.querySelector("#dayBody");
+  const sub=dayOverlay.querySelector("#daySub");
+  const foot=dayOverlay.querySelector("#dayFoot");
+  const items=reservations.filter(r=>r.date===ds).sort((a,b)=>a.startMin-b.startMin||a.computer-b.computer);
+  sub.textContent=`${ds} · 예약 ${items.length}건`+(isOff?" · 비활성":"");
+
+  body.innerHTML="";
+  if(isOff){
+    const note=document.createElement("div"); note.className="dnote";
+    note.textContent="비활성화된 날짜입니다. 새 예약을 추가할 수 없습니다.";
+    body.appendChild(note);
+  }
+  if(items.length){
+    const listEl=document.createElement("div"); listEl.className="dlist";
+    if(isOff) listEl.style.marginTop="10px";
+    items.forEach(r=>listEl.appendChild(makeDrow(r)));
+    body.appendChild(listEl);
+  } else if(!isOff){
+    const e=document.createElement("div"); e.className="dempty";
+    e.textContent="아직 예약이 없습니다. 아래에서 예약을 추가하세요.";
+    body.appendChild(e);
+  }
+
+  foot.innerHTML="";
+  if(!isOff){
+    const add=document.createElement("button"); add.className="btn primary"; add.textContent="+ 예약 추가";
+    add.onclick=()=>openForm(ds);
+    foot.appendChild(add);
+  }
+  const c=document.createElement("button"); c.className="btn ghost"; c.textContent="닫기";
+  c.onclick=closeDay; foot.appendChild(c);
+}
+
+function makeDrow(r){
+  const row=document.createElement("div"); row.className="drow";
+  const t=document.createElement("div"); t.className="dtime";
+  t.textContent=`${fmtTime(r.startMin)}–${fmtTime(r.endMin)}`;
+  const main=document.createElement("div"); main.className="dmain";
+  main.innerHTML=`<span class="dpc">컴퓨터${r.computer}</span> · ${r.section}반 ${r.group}조<br>`+
+                 `<span class="dsub">조장 ${escapeHtml(r.leader)}</span>`;
+  const del=document.createElement("button"); del.className="ddel"; del.textContent="삭제";
+  del.onclick=()=>confirmDelete(r);
+  row.appendChild(t); row.appendChild(main); row.appendChild(del);
+  return row;
+}
+
+/* 삭제 확인 : 일반 사용자는 조장 이름 입력이 일치해야 삭제, 관리자는 바로 삭제 */
+function confirmDelete(r){
+  const label=`${fmtTime(r.startMin)}–${fmtTime(r.endMin)} · 컴퓨터${r.computer} · ${r.section}반 ${r.group}조`;
+  const overlay=document.createElement("div"); overlay.className="overlay";
+  overlay.innerHTML=`
+    <div class="modal" role="dialog" aria-modal="true" aria-label="예약 삭제" style="max-width:380px">
+      <div class="modal-head"><div><h2>예약 삭제</h2><div class="sub">${label}</div></div>
+        <button class="close-x" data-close aria-label="닫기">×</button></div>
+      <div class="modal-body">
+        ${isAdmin
+          ? `<div class="dnote" style="color:var(--danger);background:var(--danger-soft);border-color:color-mix(in srgb,var(--danger) 35%,transparent)">관리자 권한으로 이 예약을 삭제합니다.</div>`
+          : `<div class="field"><label for="delName">삭제하려면 <b>조장 이름</b>을 입력하세요</label>
+             <input type="text" id="delName" placeholder="조장 이름 입력" autocomplete="off" maxlength="20"/>
+             <div class="form-err" id="delErr"></div></div>`}
+      </div>
+      <div class="modal-foot">
+        <button class="btn ghost" data-close>취소</button>
+        <button class="btn danger" id="delOk">삭제</button>
+      </div>
+    </div>`;
+  document.body.appendChild(overlay);
+  const close=()=>overlay.remove();
+  overlay.querySelectorAll("[data-close]").forEach(b=>b.onclick=close);
+  overlay.onclick=e=>{ if(e.target===overlay) close(); };
+  const input=overlay.querySelector("#delName"); if(input) input.focus();
+
+  const doDelete=(who)=>{
+    const btn=overlay.querySelector("#delOk"); btn.disabled=true; btn.textContent="삭제 중…";
+    store.deleteReservation(r.id)
+      .then(()=>{ myIds.delete(r.id); saveMyIds(); logEvent("delete",r,who); toast("삭제되었습니다.","ok"); close(); })
+      .catch(err=>{ toast("삭제 실패: "+(err.code||err.message),"warn"); btn.disabled=false; btn.textContent="삭제"; });
+  };
+  overlay.querySelector("#delOk").onclick=()=>{
+    if(isAdmin){ doDelete("관리자"); return; }
+    const v=(input.value||"").trim();
+    const err=overlay.querySelector("#delErr");
+    if(!v){ err.textContent="조장 이름을 입력하세요."; return; }
+    if(v!==String(r.leader).trim()){ err.textContent="조장 이름이 일치하지 않습니다."; input.select(); return; }
+    doDelete(v);
+  };
+  if(input) input.onkeydown=e=>{ if(e.key==="Enter") overlay.querySelector("#delOk").click(); };
+}
 
 /* ============================================================
    4) 예약 폼 모달
@@ -554,8 +713,10 @@ function openForm(ds){
       }
       const id=await store.addReservation({date:ds,startMin:start,endMin:end,section,group,computer,leader,createdAt:Date.now()});
       myIds.add(id); saveMyIds();
+      logEvent("add",{date:ds,startMin:start,endMin:end,section,group,computer,leader}, isAdmin?"관리자":leader);
       toast(`예약 완료 · ${M}/${D} ${fmtTime(start)}–${fmtTime(end)} 컴퓨터${computer}`,"ok");
       close();
+      refreshDay();
     }catch(e){
       console.error(e);
       err.textContent="저장 중 오류가 발생했습니다: "+(e.code||e.message);
@@ -608,10 +769,12 @@ function renderAdminBar(){
   if(isAdmin){
     box.innerHTML=`
       <span class="admin-badge"><span class="dot"></span>관리자 모드</span>
+      <button class="btn small" id="logBtn">로그 보기</button>
       <button class="btn small" id="csvBtn">CSV 내보내기</button>
       <button class="btn ghost small" id="exitBtn">종료</button>`;
     box.querySelector("#exitBtn").onclick=exitAdmin;
     box.querySelector("#csvBtn").onclick=exportCsv;
+    box.querySelector("#logBtn").onclick=openLogs;
   }else{
     box.innerHTML=`<button class="btn" id="adminBtn">관리자</button>`;
     box.querySelector("#adminBtn").onclick=openPin;
@@ -626,6 +789,56 @@ function exportCsv(){
   const blob=new Blob([csv],{type:"text/csv;charset=utf-8"});
   const a=document.createElement("a"); a.href=URL.createObjectURL(blob);
   a.download="예약목록_2026-10.csv"; a.click(); URL.revokeObjectURL(a.href);
+}
+
+/* 관리자용 추가/삭제 로그 보기 */
+function fmtLogTime(ts){
+  const d=new Date(ts);
+  return `${pad(d.getMonth()+1)}/${pad(d.getDate())} ${pad(d.getHours())}:${pad(d.getMinutes())}`;
+}
+function openLogs(){
+  const overlay=document.createElement("div"); overlay.className="overlay";
+  overlay.innerHTML=`
+    <div class="modal" role="dialog" aria-modal="true" aria-label="예약 로그" style="max-width:560px">
+      <div class="modal-head"><div><h2>추가 · 삭제 로그</h2>
+        <div class="sub" id="logSub">불러오는 중…</div></div>
+        <button class="close-x" data-close aria-label="닫기">×</button></div>
+      <div class="modal-body"><div id="logBody"><div class="logempty">불러오는 중…</div></div></div>
+      <div class="modal-foot">
+        <button class="btn small" id="logReload">새로고침</button>
+        <button class="btn ghost" data-close>닫기</button>
+      </div>
+    </div>`;
+  document.body.appendChild(overlay);
+  const close=()=>overlay.remove();
+  overlay.querySelectorAll("[data-close]").forEach(b=>b.onclick=close);
+  overlay.onclick=e=>{ if(e.target===overlay) close(); };
+
+  async function load(){
+    const body=overlay.querySelector("#logBody");
+    const sub=overlay.querySelector("#logSub");
+    body.innerHTML=`<div class="logempty">불러오는 중…</div>`;
+    let logs=[];
+    try{ logs=await store.getLogs(200); }
+    catch(e){ body.innerHTML=`<div class="logempty">로그를 불러오지 못했습니다: ${e.code||e.message}</div>`; sub.textContent="오류"; return; }
+    sub.textContent=`최근 ${logs.length}건`;
+    if(!logs.length){ body.innerHTML=`<div class="logempty">기록된 로그가 없습니다.</div>`; return; }
+    const list=document.createElement("div"); list.className="loglist";
+    logs.forEach(g=>{
+      const row=document.createElement("div"); row.className="logrow";
+      const isDel=g.action==="delete";
+      row.innerHTML=
+        `<span class="logtime">${fmtLogTime(g.ts)}</span>`+
+        `<span class="logbadge ${isDel?"del":"add"}">${isDel?"삭제":"등록"}</span>`+
+        `<span class="logmain">${g.date} · <b>${fmtTime(g.startMin)}–${fmtTime(g.endMin)}</b> · `+
+        `컴퓨터${g.computer} · ${g.section}반 ${g.group}조 · 조장 ${escapeHtml(g.leader)} `+
+        `<span class="logwho">(${escapeHtml(g.who||"-")})</span></span>`;
+      list.appendChild(row);
+    });
+    body.innerHTML=""; body.appendChild(list);
+  }
+  overlay.querySelector("#logReload").onclick=load;
+  load();
 }
 
 /* ============================================================
