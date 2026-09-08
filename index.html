@@ -126,6 +126,14 @@
   .banner code{font-family:var(--mono);font-size:12px;background:var(--surface-2);
     padding:1px 6px;border-radius:5px}
 
+  /* 안내 설명 */
+  .intro{margin:16px 0 0;background:var(--surface);border:1px solid var(--border);
+    border-left:4px solid var(--accent);border-radius:10px;padding:14px 18px 14px 20px;box-shadow:var(--shadow)}
+  .intro ul{margin:0;padding-left:18px;display:flex;flex-direction:column;gap:7px}
+  .intro li{font-size:13.5px;color:var(--text-soft);line-height:1.6}
+  .intro li b{color:var(--text);font-weight:700}
+  .intro li::marker{color:var(--accent)}
+
   /* ===== Meta row ===== */
   .meta-row{display:flex;align-items:center;justify-content:space-between;gap:16px;
     flex-wrap:wrap;margin:22px 0 14px}
@@ -285,6 +293,14 @@
 
 <div class="wrap">
   <div id="banner"></div>
+
+  <div class="intro">
+    <ul>
+      <li>이 페이지에서 예약 후 실습을 진행하면, 해당 시간에 <b>튜터의 보조</b>가 진행됩니다.</li>
+      <li>예약 후 조장은 <b>반드시 튜터 오픈채팅</b>을 통해 카카오톡 메시지를 남겨주시기 바랍니다.</li>
+      <li>튜터의 보조가 불필요하다면, 이 페이지를 반드시 이용할 필요는 없습니다.</li>
+    </ul>
+  </div>
 
   <div class="meta-row">
     <div class="month-title">
