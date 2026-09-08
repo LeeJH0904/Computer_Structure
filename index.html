@@ -216,6 +216,18 @@
   .dnote{font-size:12.5px;color:var(--off-text);background:var(--off-fill);border:1px solid var(--off-line);
     border-radius:8px;padding:9px 12px;font-weight:600;text-align:center}
 
+  /* 관리자 시간대 관리 */
+  .slotmgr{background:var(--surface-2);border:1px solid var(--border);border-radius:10px;padding:12px 14px}
+  .slotmgr-title{font-size:11.5px;font-weight:700;color:var(--text-soft);margin-bottom:9px;line-height:1.4}
+  .slotgrid{display:grid;grid-template-columns:repeat(2,1fr);gap:7px}
+  .slotchip{font-family:var(--mono);font-size:12px;font-weight:600;padding:7px 8px;border-radius:8px;cursor:pointer;
+    border:1px solid color-mix(in srgb,var(--good) 40%,transparent);background:var(--good-soft);color:var(--good);
+    transition:transform .05s ease}
+  .slotchip:active{transform:translateY(1px)}
+  .slotchip.off{border-color:color-mix(in srgb,var(--danger) 45%,transparent);background:var(--danger-soft);
+    color:var(--danger);text-decoration:line-through}
+  @media (max-width:480px){ .slotgrid{grid-template-columns:1fr} }
+
   /* 로그 목록 */
   .loglist{display:flex;flex-direction:column;gap:6px;max-height:58vh;overflow-y:auto}
   .logrow{display:flex;align-items:center;gap:9px;padding:8px 10px;border:1px solid var(--border);
@@ -252,6 +264,9 @@
     cursor:pointer;line-height:1;padding:2px 6px;border-radius:6px}
   .close-x:hover{color:var(--text);background:var(--surface-2)}
   .form-err{font-size:12.5px;color:var(--danger);font-weight:600;min-height:0}
+  .form-hint{font-size:12px;color:var(--text-soft);background:var(--surface-2);border:1px solid var(--border);
+    border-radius:8px;padding:8px 11px;line-height:1.5}
+  .form-hint b{color:var(--text);font-weight:700}
 
   /* ===== Toast ===== */
   .toast-wrap{position:fixed;left:50%;bottom:26px;transform:translateX(-50%);z-index:80;
@@ -296,8 +311,10 @@
 
   <div class="intro">
     <ul>
-      <li>튜터 일정 상 <b>[월,화,수,금]</b>, <b>[13:00~18:00]</b>에만 보조가 가능합니다.</li>
       <li>이 페이지에서 예약 후 실습을 진행하면, 해당 시간에 <b>튜터의 보조</b>가 진행됩니다.</li>
+      <li>튜터 일정 상 <b>[월,화,수,금]</b>, <b>[13:00~18:00]</b>에만 보조가 가능합니다.</li>
+      <li>또한, 추가적으로 비활성화된 날짜 및 시간에는 튜터의 보조가 불가능합니다.</li>
+      <li>하지만 보조 없이 각 조별로 진행하는 <b>개별 실습은 자유로이 진행</b>할 수 있습니다.</li>
       <li>예약 후 조장은 <b>반드시 튜터 오픈채팅</b>을 통해 카카오톡 메시지를 남겨주시기 바랍니다.</li>
       <li>튜터의 보조가 불필요하다면, 이 페이지를 반드시 이용할 필요는 없습니다.</li>
     </ul>
@@ -365,6 +382,7 @@ function makeFirebaseStore(){
   const fdb = firebase.firestore();
   const resCol = fdb.collection("reservations");
   const metaDoc = fdb.collection("meta").doc("disabledDates");
+  const slotsDoc = fdb.collection("meta").doc("disabledSlots");
   const logCol = fdb.collection("logs");
   return {
     mode:"firebase",
@@ -378,6 +396,14 @@ function makeFirebaseStore(){
         const data=d.exists?d.data():{}; const map=(data&&data.dates)||{};
         const set=new Set(Object.keys(map).filter(k=>map[k])); cb(set);
       }, err=>console.error(err));
+    },
+    onDisabledSlots(cb){
+      slotsDoc.onSnapshot(d=>{
+        const data=d.exists?d.data():{}; cb((data&&data.slots)||{});
+      }, err=>console.error(err));
+    },
+    async setSlotDisabled(date,slotStart,disabled){
+      await slotsDoc.set({slots:{[date]:{[slotStart]:disabled}}},{merge:true});
     },
     async checkConflict(date,computer,start,end){
       const q = await resCol.where("date","==",date).where("computer","==",computer).get();
@@ -397,17 +423,22 @@ function makeFirebaseStore(){
 }
 
 function makeLocalStore(){
-  const RES="cs_res_v1", DIS="cs_dis_v1", LOG="cs_logs_v1";
+  const RES="cs_res_v1", DIS="cs_dis_v1", LOG="cs_logs_v1", SLOTS="cs_slots_v1";
   const read=(k)=>{try{return JSON.parse(localStorage.getItem(k)||"null")}catch(e){return null}};
   const write=(k,v)=>{try{localStorage.setItem(k,JSON.stringify(v))}catch(e){}};
-  let resCb=null, disCb=null;
+  let resCb=null, disCb=null, slotCb=null;
   const emitRes=()=>{ if(resCb) resCb(read(RES)||[]); };
   const emitDis=()=>{ if(disCb){const m=read(DIS)||{};disCb(new Set(Object.keys(m).filter(k=>m[k])));} };
-  window.addEventListener("storage",e=>{ if(e.key===RES)emitRes(); if(e.key===DIS)emitDis(); });
+  const emitSlots=()=>{ if(slotCb) slotCb(read(SLOTS)||{}); };
+  window.addEventListener("storage",e=>{ if(e.key===RES)emitRes(); if(e.key===DIS)emitDis(); if(e.key===SLOTS)emitSlots(); });
   return {
     mode:"local",
     onReservations(cb){ resCb=cb; emitRes(); },
     onDisabled(cb){ disCb=cb; emitDis(); },
+    onDisabledSlots(cb){ slotCb=cb; emitSlots(); },
+    async setSlotDisabled(date,slotStart,disabled){
+      const m=read(SLOTS)||{}; (m[date]=m[date]||{})[slotStart]=disabled; write(SLOTS,m); emitSlots();
+    },
     async checkConflict(date,computer,start,end){
       const arr=read(RES)||[];
       return arr.find(r=>r.date===date && r.computer===computer && start<r.endMin && r.startMin<end)||null;
@@ -439,8 +470,40 @@ try{
    3) 상태 & 렌더링
    ============================================================ */
 const WEEKDAYS=["일","월","화","수","목","금","토"];
-let reservations=[], disabled=new Set(), isAdmin=false;
+const DAY_START=780, DAY_END=1080, SLOT=30;            // 13:00 ~ 18:00, 30분 단위
+const SLOT_STARTS=[]; for(let m=DAY_START;m<DAY_END;m+=SLOT) SLOT_STARTS.push(m); // 10개 슬롯
+const MAX_MINUTES=120;                                 // 일반 사용자 최대 2시간
+let reservations=[], disabled=new Set(), disabledSlots={}, isAdmin=false;
 let myIds = new Set(readJSON("cs_my_ids")||[]);
+
+/* 특정 시간대 비활성 여부 */
+function slotOff(date,m){ return !!(disabledSlots[date] && disabledSlots[date][m]); }
+/* [start,end) 안에 비활성 슬롯이 있으면 그 슬롯 시작분 반환, 없으면 null */
+function firstOffSlotInRange(date,start,end){
+  for(let m=start;m<end;m+=SLOT){ if(slotOff(date,m)) return m; }
+  return null;
+}
+/* 날짜의 비활성 슬롯들을 연속 구간으로 묶어 "13:00–14:00" 배열로 */
+function offRanges(date){
+  const offs=SLOT_STARTS.filter(m=>slotOff(date,m));
+  const ranges=[];
+  offs.forEach(m=>{
+    const last=ranges[ranges.length-1];
+    if(last && last.end===m) last.end=m+SLOT; else ranges.push({start:m,end:m+SLOT});
+  });
+  return ranges.map(r=>`${fmtTime(r.start)}–${fmtTime(r.end)}`);
+}
+/* HHMM 표기 : 780 → "1300", 809 → "1329" */
+function fmtHHMM(m){ return pad(Math.floor(m/60))+pad(m%60); }
+/* 선택 가능한 시작 시각 (비활성 슬롯 제외) */
+function startOptions(date){ return SLOT_STARTS.filter(m=>m<=DAY_END-SLOT && !slotOff(date,m)); }
+/* 시작 s 기준 선택 가능한 종료 시각 — 비활성 슬롯 경계까지 모두 표시.
+   (최대 2시간 제한은 목록을 자르지 않고, 예약하기 누를 때 검증으로 처리) */
+function endOptions(date,s){
+  const opts=[];
+  for(let e=s+SLOT;e<=DAY_END;e+=SLOT){ if(slotOff(date,e-SLOT)) break; opts.push(e); }
+  return opts;
+}
 
 function readJSON(k){try{return JSON.parse(localStorage.getItem(k)||"null")}catch(e){return null}}
 function saveMyIds(){try{localStorage.setItem("cs_my_ids",JSON.stringify([...myIds]))}catch(e){}}
@@ -452,6 +515,7 @@ const todayStr=(()=>{const t=new Date();return dateStr(t.getFullYear(),t.getMont
 
 store.onReservations(arr=>{ reservations=arr; render(); });
 store.onDisabled(set=>{ disabled=set; render(); });
+if(store.onDisabledSlots) store.onDisabledSlots(map=>{ disabledSlots=map||{}; render(); });
 
 function render(){
   const grid=document.getElementById("grid");
@@ -560,6 +624,29 @@ function openDay(ds){
 
 function closeDay(){ if(dayOverlay){ dayOverlay.remove(); dayOverlay=null; dayDate=null; } }
 
+/* 관리자용 시간대 관리 그리드 */
+function buildSlotManager(ds){
+  const wrap=document.createElement("div"); wrap.className="slotmgr";
+  const title=document.createElement("div"); title.className="slotmgr-title";
+  title.textContent="시간대 관리 · 클릭하면 해당 시간대 예약을 차단/허용합니다";
+  wrap.appendChild(title);
+  const grid=document.createElement("div"); grid.className="slotgrid";
+  SLOT_STARTS.forEach(m=>{
+    const off=slotOff(ds,m);
+    const chip=document.createElement("button");
+    chip.className="slotchip"+(off?" off":"");
+    chip.textContent=`${fmtTime(m)}–${fmtTime(m+SLOT)}`;
+    chip.onclick=()=>{
+      store.setSlotDisabled(ds,m,!off)
+        .then(()=>toast(`${fmtTime(m)}–${fmtTime(m+SLOT)} ${off?"예약 허용":"예약 차단"}`,"ok"))
+        .catch(err=>toast("변경 실패: "+(err.code||err.message),"warn"));
+    };
+    grid.appendChild(chip);
+  });
+  wrap.appendChild(grid);
+  return wrap;
+}
+
 function refreshDay(){
   if(!dayOverlay||!dayDate) return;
   const ds=dayDate, isOff=disabled.has(ds);
@@ -575,13 +662,27 @@ function refreshDay(){
     note.textContent="비활성화된 날짜입니다. 새 예약을 추가할 수 없습니다.";
     body.appendChild(note);
   }
+
+  // 시간대: 관리자는 관리 그리드, 일반 사용자는 예약 불가 시간대 안내
+  if(isAdmin){
+    const mgr=buildSlotManager(ds); mgr.style.marginTop=isOff?"10px":"0";
+    body.appendChild(mgr);
+  } else {
+    const ranges=offRanges(ds);
+    if(ranges.length){
+      const n=document.createElement("div"); n.className="dnote";
+      n.style.marginTop=isOff?"10px":"0";
+      n.textContent="예약 불가 시간대: "+ranges.join(", ");
+      body.appendChild(n);
+    }
+  }
+
   if(items.length){
-    const listEl=document.createElement("div"); listEl.className="dlist";
-    if(isOff) listEl.style.marginTop="10px";
+    const listEl=document.createElement("div"); listEl.className="dlist"; listEl.style.marginTop="12px";
     items.forEach(r=>listEl.appendChild(makeDrow(r)));
     body.appendChild(listEl);
   } else if(!isOff){
-    const e=document.createElement("div"); e.className="dempty";
+    const e=document.createElement("div"); e.className="dempty"; e.style.marginTop="12px";
     e.textContent="아직 예약이 없습니다. 아래에서 예약을 추가하세요.";
     body.appendChild(e);
   }
@@ -655,9 +756,6 @@ function confirmDelete(r){
 /* ============================================================
    4) 예약 폼 모달
    ============================================================ */
-function timeOptions(startFrom,endTo){
-  let html=""; for(let m=780;m<=1080;m+=30){ if(m<startFrom||m>endTo)continue; html+=`<option value="${m}">${fmtTime(m)}</option>`; } return html;
-}
 
 function openForm(ds){
   const [Y,M,D]=ds.split("-");
@@ -675,10 +773,11 @@ function openForm(ds){
       <div class="modal-body">
         <div class="row2">
           <div class="field"><label for="fStart">시작 시간</label>
-            <select id="fStart">${timeOptions(780,1050)}</select></div>
+            <select id="fStart"></select></div>
           <div class="field"><label for="fEnd">종료 시간</label>
-            <select id="fEnd">${timeOptions(810,1080)}</select></div>
+            <select id="fEnd"></select></div>
         </div>
+        <div class="form-hint" id="fHint"></div>
         <div class="row3">
           <div class="field"><label for="fSection">분반</label>
             <select id="fSection"><option value="001">001반</option><option value="002">002반</option></select></div>
@@ -698,10 +797,32 @@ function openForm(ds){
     </div>`;
   document.body.appendChild(overlay);
 
-  // default end = start + 60
+  // 시간 드롭다운을 동적으로 채움 (비활성 시간대는 아예 제외)
   const startSel=overlay.querySelector("#fStart"), endSel=overlay.querySelector("#fEnd");
-  startSel.value="780"; endSel.value="840";
-  startSel.onchange=()=>{ if(+endSel.value<=+startSel.value){ endSel.value=String(Math.min(+startSel.value+60,1080)); } };
+  const submitBtn=overlay.querySelector("#fSubmit");
+  const opt=(v,label)=>{ const o=document.createElement("option"); o.value=v; o.textContent=label; return o; };
+  const fillEnds=()=>{
+    const s=+startSel.value; endSel.innerHTML="";
+    endOptions(ds,s).forEach(e=>endSel.appendChild(opt(e,fmtHHMM(e-1))));  // 종료: 마지막 분(1329)
+  };
+  const starts=startOptions(ds);
+  let hasTimes=true;
+  if(!starts.length){
+    hasTimes=false; startSel.disabled=true; endSel.disabled=true; submitBtn.disabled=true;
+  }else{
+    starts.forEach(m=>startSel.appendChild(opt(m,fmtHHMM(m))));                // 시작: 1300
+    startSel.value=String(starts[0]); fillEnds();
+    startSel.onchange=fillEnds;
+  }
+
+  // 안내
+  const hint=overlay.querySelector("#fHint");
+  if(!hasTimes){
+    hint.innerHTML="이 날짜는 예약 가능한 시간대가 없습니다."; hint.style.color="var(--danger)";
+  }else{
+    let hintHtml = isAdmin ? "" : `예약은 최대 <b>2시간</b>까지 가능합니다.`;
+    if(!hintHtml) hint.style.display="none"; else hint.innerHTML=hintHtml;
+  }
 
   const close=()=>overlay.remove();
   overlay.querySelectorAll("[data-close]").forEach(b=>b.onclick=close);
@@ -719,6 +840,19 @@ function openForm(ds){
     err.textContent="";
     if(end<=start){ err.textContent="종료 시간은 시작 시간보다 늦어야 합니다."; return; }
     if(!leader){ err.textContent="조장 이름을 입력해 주세요."; return; }
+    if(!isAdmin && end-start>MAX_MINUTES){
+      const mins=end-start;
+      err.textContent=`예약은 최대 ${MAX_MINUTES/60}시간까지 가능합니다. (선택: ${Math.floor(mins/60)}시간 ${mins%60?mins%60+"분":""})`;
+      toast(`최대 ${MAX_MINUTES/60}시간까지만 예약할 수 있습니다.`,"warn"); return;
+    }
+    if(!isAdmin){
+      const offM=firstOffSlotInRange(ds,start,end);
+      if(offM!==null){
+        err.textContent=`선택하신 시간에 예약 불가 시간대(${fmtTime(offM)}–${fmtTime(offM+SLOT)})가 포함되어 있습니다.`;
+        toast(`예약 불가 시간대 포함: ${fmtTime(offM)}–${fmtTime(offM+SLOT)}`,"warn");
+        return;
+      }
+    }
 
     const btn=overlay.querySelector("#fSubmit"); btn.disabled=true; btn.textContent="확인 중…";
     try{
